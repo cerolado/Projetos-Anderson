@@ -152,11 +152,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);overflow:hid
 .prog button.past{background:color-mix(in srgb,var(--ember) 45%,var(--line))}
 .prog button.on{background:var(--ember)}
 .bar-name{font-size:21px;font-weight:500;min-width:210px}
-.bar-hint{font-size:19px;color:var(--muted);display:flex;gap:12px;align-items:center;transition:opacity .3s}
+.bar-hint{font-size:19px;color:var(--muted);display:flex;gap:12px;align-items:center;white-space:nowrap;margin-right:auto;transition:opacity .3s}
 .bar-hint.off{opacity:0}
 .bar-hint i{width:9px;height:9px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 5px color-mix(in srgb,var(--ember) 25%,transparent)}
-.sim{display:flex;gap:10px;align-items:center;margin-left:auto;transition:opacity .3s}
-.sim.off{opacity:0;pointer-events:none}
+.sim{display:flex;gap:10px;align-items:center;transition:opacity .3s}
+.sim.off{opacity:0;pointer-events:none;display:none}
 .sim>span{font-size:19px;color:var(--muted);margin-right:4px}
 .sim button{font:600 16px var(--mono);color:var(--tc);background:transparent;border:1.5px solid color-mix(in srgb,var(--tc) 55%,transparent);border-radius:999px;padding:8px 14px;cursor:pointer;display:flex;gap:8px;align-items:center}
 .sim button kbd{font:inherit;opacity:.55}
