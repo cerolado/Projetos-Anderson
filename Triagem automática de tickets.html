@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Triagem automática de tickets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#090B17; --bg-glow:#161C44; --surface:#12162F; --surface-2:#1B2046; --line:#2C3366; --line-soft:#1A1F47;
+  --text:#EEF0FF; --muted:#8E95C8; --ember:#FF6A3D; --on-ember:#FFFFFF;
+  --c-m1:#3EE0D0; --c-djg:#FFB23F; --c-djf:#FF4D8D; --c-fin:#A58FFF; --c-sem:#8390B8;
+  --font:"Bricolage Grotesque","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  color-scheme:dark;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#EDEFF8; --bg-glow:#DCE1F6; --surface:#FFFFFF; --surface-2:#F3F4FB; --line:#B9BFDD; --line-soft:#D5D9EC;
+    --text:#12152B; --muted:#535B86; --ember:#E0461B;
+    --c-m1:#0A9488; --c-djg:#B26F00; --c-djf:#D21F66; --c-fin:#6650DB; --c-sem:#56628A;
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#EDEFF8; --bg-glow:#DCE1F6; --surface:#FFFFFF; --surface-2:#F3F4FB; --line:#B9BFDD; --line-soft:#D5D9EC;
+  --text:#12152B; --muted:#535B86; --ember:#E0461B;
+  --c-m1:#0A9488; --c-djg:#B26F00; --c-djf:#D21F66; --c-fin:#6650DB; --c-sem:#56628A;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden;-webkit-font-smoothing:antialiased}
+
+.stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden;
+  background:
+    radial-gradient(var(--line-soft) 1.3px, transparent 1.7px) 0 0/34px 34px,
+    radial-gradient(1000px 640px at 70% 46%, var(--bg-glow), transparent 72%),
+    var(--bg);}
+
+/* ---------- legenda da etapa ---------- */
+.caption{position:absolute;left:80px;top:52px;width:1760px;transition:opacity .3s ease}
+.caption.swap,.caption.off{opacity:0}
+.step-no{font:600 22px var(--mono);color:var(--ember);margin:0}
+.cap-title{font-size:58px;font-weight:800;letter-spacing:-.025em;line-height:1.02;margin:10px 0 14px}
+.cap-body{font-size:27px;line-height:1.38;color:var(--muted);margin:0;max-width:1500px}
+.t{font-family:var(--mono);font-size:.84em;font-weight:600;color:var(--tc,var(--ember));white-space:nowrap}
+
+/* ---------- fluxograma ---------- */
+.flow{position:absolute;left:0;top:248px;width:1920px;height:752px;overflow:visible}
+.zone{transition:opacity .8s ease}
+.zone.is-hidden{opacity:0}
+.zone rect{fill:var(--surface-2);opacity:.32}
+.zone text{font:500 18px var(--mono);fill:var(--muted);text-anchor:middle}
+
+.node{cursor:pointer;transition:opacity .55s ease;outline:none}
+.node .box{fill:var(--surface);stroke:var(--line);stroke-width:2;transition:fill .5s ease,stroke .3s ease}
+.node .ring{fill:none;stroke:var(--ember);stroke-width:3;opacity:0;transform-box:fill-box;transform-origin:center}
+.node text{transition:opacity .45s ease;pointer-events:none}
+.node .label{font:700 23px var(--font);fill:var(--text);text-anchor:middle}
+.node .label.sm{font-size:19px}
+.node .sub{font:400 15px var(--mono);fill:var(--muted);text-anchor:middle}
+.node.tag .box{stroke:var(--tc);fill:color-mix(in srgb,var(--tc) 13%,var(--surface))}
+.node.tag .label{font:600 17px var(--mono);fill:var(--tc);text-anchor:start}
+.node.tag .dot{fill:var(--tc);transition:opacity .45s}
+.node.tag .ring{stroke:var(--tc)}
+.node:hover .box,.node:focus-visible .box,.node.is-selected .box{stroke:var(--ember);stroke-width:3}
+.node.tag:hover .box,.node.tag:focus-visible .box,.node.tag.is-selected .box{stroke:var(--tc);stroke-width:3.5}
+.node.is-active .box{stroke:var(--ember);stroke-width:3;filter:url(#glow)}
+.node.tag.is-active .box{stroke:var(--tc)}
+.node.is-hidden{opacity:0;pointer-events:none}
+.node.is-ghost{pointer-events:none}
+.node.is-ghost .box{fill:transparent;stroke:var(--line);stroke-width:2;stroke-dasharray:5 9;filter:none}
+.node.is-ghost text,.node.is-ghost .dot{opacity:0}
+.node.pulse .ring{animation:ring 1s ease-out}
+@keyframes ring{0%{opacity:.95;transform:scale(1)}100%{opacity:0;transform:scale(1.28)}}
+
+.edge{transition:opacity .55s ease}
+.edge.is-hidden{opacity:0}
+.edge .base{fill:none;stroke:var(--line);stroke-width:2.5;marker-end:url(#arr)}
+.edge.is-ghost .base{stroke-dasharray:3 10;marker-end:none}
+.edge .lit{fill:none;stroke:var(--ember);stroke-width:4.5;stroke-linecap:round;filter:url(#glow)}
+.edge.done .lit{opacity:.55}
+.edge .elabel{font:500 16px var(--mono);fill:var(--muted);transition:opacity .4s}
+.edge.is-ghost .elabel,.edge.is-hidden .elabel{opacity:0}
+
+.token .core{fill:var(--tc,var(--ember));filter:url(#glow)}
+.token .halo{fill:var(--tc,var(--ember));opacity:.22;animation:halo 1.2s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes halo{50%{transform:scale(1.45);opacity:.07}}
+.chip-bg{fill:var(--surface-2);stroke:var(--tc,var(--ember));stroke-width:2}
+.chip-t{font:600 17px var(--mono);fill:var(--text);text-anchor:middle}
+.bumpg{transform-box:fill-box;transform-origin:center}
+.bumpg.bump{animation:bump .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes bump{0%{transform:scale(.78)}100%{transform:scale(1)}}
+
+/* ---------- telas cheias (abertura, problema, fecho) ---------- */
+.ov{position:absolute;left:0;top:0;width:1920px;height:1000px;padding:110px 120px 0;opacity:0;visibility:hidden;transition:opacity .5s ease,visibility .5s;z-index:6}
+.ov.show{opacity:1;visibility:visible}
+#ov3{background:transparent}
+.flow{transition:opacity .5s ease}
+.stage.closing .flow{opacity:0;pointer-events:none}
+
+.ov-title{display:grid;grid-template-columns:1fr 560px;column-gap:80px;align-content:center;padding-top:0}
+.hero{font-size:160px;font-weight:800;line-height:.9;letter-spacing:-.045em;margin:0}
+.hero-sub{font-size:36px;line-height:1.3;color:var(--muted);margin:40px 0 0;max-width:900px}
+.hero-tags{display:flex;flex-direction:column;gap:18px;align-items:flex-start;justify-content:center}
+.pill{font:600 25px var(--mono);color:var(--tc);border:2px solid var(--tc);border-radius:999px;padding:12px 28px 12px 22px;
+  background:color-mix(in srgb,var(--tc) 10%,transparent);display:inline-flex;gap:14px;align-items:center;opacity:.25;transform:translateX(24px)}
+.pill::before{content:"";width:11px;height:11px;border-radius:50%;background:var(--tc)}
+.ov.show .pill{animation:pillIn .6s cubic-bezier(.2,.8,.2,1) forwards}
+.ov.show .pill:nth-child(1){animation-delay:.5s}
+.ov.show .pill:nth-child(2){animation-delay:.65s}
+.ov.show .pill:nth-child(3){animation-delay:.8s}
+.ov.show .pill:nth-child(4){animation-delay:.95s}
+.ov.show .pill:nth-child(5){animation-delay:1.1s}
+@keyframes pillIn{to{opacity:1;transform:none}}
+.hero-line{grid-column:1/-1;width:1680px;height:90px;margin-top:70px;overflow:visible}
+.hl-base{stroke:var(--line);stroke-width:2}
+.hl-node{fill:var(--bg);stroke:var(--line);stroke-width:2}
+.hl-dot{fill:var(--ember);filter:url(#glow)}
+
+.ov-h{font-size:78px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:30px 0 90px;max-width:1500px}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:64px}
+.col{border-top:3px solid var(--line);padding-top:30px}
+.col h3{font-size:46px;font-weight:700;margin:0 0 18px;letter-spacing:-.02em}
+.col p{font-size:28px;line-height:1.45;color:var(--muted);margin:0}
+.col.ph{border-top-color:var(--ember)}
+.col.ph h3{font:600 46px var(--mono);color:var(--ember)}
+
+#ov3 .ov-h{font-size:64px;margin:0 0 50px}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:56px}
+.ba-col{padding:34px 42px;border-radius:24px;border:2px solid var(--line)}
+.ba-col.after{border-color:var(--ember);background:color-mix(in srgb,var(--ember) 7%,transparent)}
+.ba-col h3{font-size:36px;font-weight:700;margin:0 0 18px}
+.ba-col ol{margin:0;padding-left:1.3em;font-size:27px;line-height:1.65;color:var(--muted)}
+.ba-col.after ol{color:var(--text)}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:56px;margin-top:56px}
+.m strong{display:block;font:600 32px var(--mono);color:var(--ember);margin-bottom:8px}
+.m span{font-size:24px;color:var(--muted)}
+
+/* ---------- barra inferior ---------- */
+.bar{position:absolute;left:0;right:0;bottom:0;height:80px;padding:0 80px;display:flex;align-items:center;gap:26px;border-top:1px solid var(--line-soft);z-index:5}
+.prog{display:flex;gap:8px}
+.prog button{width:38px;height:8px;border-radius:4px;border:0;background:var(--line);padding:0;cursor:pointer}
+.prog button.past{background:color-mix(in srgb,var(--ember) 45%,var(--line))}
+.prog button.on{background:var(--ember)}
+.bar-name{font-size:21px;font-weight:500;min-width:210px}
+.bar-hint{font-size:19px;color:var(--muted);display:flex;gap:12px;align-items:center;transition:opacity .3s}
+.bar-hint.off{opacity:0}
+.bar-hint i{width:9px;height:9px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 5px color-mix(in srgb,var(--ember) 25%,transparent)}
+.sim{display:flex;gap:10px;align-items:center;margin-left:auto;transition:opacity .3s}
+.sim.off{opacity:0;pointer-events:none}
+.sim>span{font-size:19px;color:var(--muted);margin-right:4px}
+.sim button{font:600 16px var(--mono);color:var(--tc);background:transparent;border:1.5px solid color-mix(in srgb,var(--tc) 55%,transparent);border-radius:999px;padding:8px 14px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.sim button kbd{font:inherit;opacity:.55}
+.sim button.on{background:color-mix(in srgb,var(--tc) 18%,transparent);border-color:var(--tc)}
+.ctrl{display:flex;gap:10px}
+.ctrl button{white-space:nowrap;height:48px;min-width:48px;border-radius:24px;border:1.5px solid var(--line);background:var(--surface);color:var(--text);font:500 18px var(--font);cursor:pointer;display:grid;place-items:center;padding:0 16px}
+.ctrl button:hover{border-color:var(--ember)}
+.ctrl #next{background:var(--ember);border-color:var(--ember);color:var(--on-ember)}
+.ctrl svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+button:focus-visible{outline:3px solid var(--ember);outline-offset:3px}
+
+/* ---------- painel lateral ---------- */
+.panel{position:absolute;top:0;right:0;width:700px;height:1080px;background:var(--surface);border-left:1px solid var(--line);
+  transform:translateX(104%);transition:transform .45s cubic-bezier(.2,.8,.2,1);z-index:20;overflow-y:auto;
+  padding:76px 64px 64px 70px;box-shadow:-30px 0 90px rgba(0,0,0,.4)}
+.panel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--tc,var(--ember))}
+.panel.open{transform:none}
+.p-close{position:absolute;top:26px;right:26px;width:48px;height:48px;border-radius:24px;border:1.5px solid var(--line);background:transparent;color:var(--text);cursor:pointer;display:grid;place-items:center}
+.p-close svg{width:20px;height:20px;stroke:currentColor;stroke-width:2.5;stroke-linecap:round}
+.p-kind{font-size:22px;color:var(--muted);margin:0}
+.p-title{font-size:48px;font-weight:800;letter-spacing:-.02em;line-height:1.05;margin:8px 0 28px}
+.p-title.mono{font-family:var(--mono);font-weight:600;font-size:38px;color:var(--tc);letter-spacing:-.01em}
+.p-body{font-size:23px;line-height:1.55;color:var(--muted)}
+.p-body .lead{color:var(--text);font-size:27px;line-height:1.4}
+.p-body h3{font-size:19px;font-weight:700;color:var(--text);margin:30px 0 8px}
+.p-body p{margin:0 0 10px}
+.p-body code{font-family:var(--mono);font-size:.86em;color:var(--text);background:var(--bg);padding:2px 8px;border-radius:6px}
+.p-body pre.rule{font:600 22px var(--mono);background:var(--bg);color:var(--tc,var(--ember));border:1px solid var(--line);border-radius:14px;padding:18px 22px;white-space:pre-wrap;margin:0}
+.p-body ul{margin:0;padding-left:1.1em}
+.p-body li{margin-bottom:6px}
+.scn{border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin:10px 0}
+.scn strong{display:block;color:var(--text);font-weight:600;margin-bottom:6px;line-height:1.35}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{font:600 17px var(--mono);color:var(--tc);border:1.5px solid var(--tc);background:color-mix(in srgb,var(--tc) 10%,transparent);border-radius:999px;padding:8px 14px;cursor:pointer}
+.tip{font-size:19px;margin-top:14px}
+
+@media (prefers-reduced-motion: reduce){
+  .token .halo,.node.pulse .ring,.bumpg.bump{animation:none}
+  .ov.show .pill{animation-duration:.01ms;animation-delay:0s !important}
+}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+  <!-- 1. abertura -->
+  <section class="ov ov-title" id="ov1" aria-label="Abertura">
+    <div>
+      <h1 class="hero">Triagem<br>automática<br>de tickets</h1>
+      <p class="hero-sub">Do ticket aberto à macro certa, sem classificação manual.</p>
+    </div>
+    <div class="hero-tags" aria-label="As cinco classificações">
+      <span class="pill" style="--tc:var(--c-m1)">M1-QD</span>
+      <span class="pill" style="--tc:var(--c-djg)">DJ-Garantia-QD</span>
+      <span class="pill" style="--tc:var(--c-djf)">DJ-Fora-QD</span>
+      <span class="pill" style="--tc:var(--c-fin)">assinaturas-finalizadas</span>
+      <span class="pill" style="--tc:var(--c-sem)">email-sem-cadastro</span>
+    </div>
+    <svg class="hero-line" viewBox="0 0 1680 90" aria-hidden="true">
+      <line class="hl-base" x1="10" y1="45" x2="1670" y2="45"/>
+      <circle class="hl-node" cx="10" cy="45" r="9"/><circle class="hl-node" cx="287" cy="45" r="9"/>
+      <circle class="hl-node" cx="563" cy="45" r="9"/><circle class="hl-node" cx="840" cy="45" r="9"/>
+      <circle class="hl-node" cx="1117" cy="45" r="9"/><circle class="hl-node" cx="1393" cy="45" r="9"/>
+      <circle class="hl-node" cx="1670" cy="45" r="9"/>
+      <circle class="hl-dot" r="10" id="heroDot"><animateMotion dur="5s" repeatCount="indefinite" path="M10 45 H1670"/></circle>
+    </svg>
+  </section>
+
+  <!-- 2. problema -->
+  <section class="ov" id="ov2" aria-label="O problema">
+    <h2 class="ov-h">Hoje, classificar um ticket é trabalho manual</h2>
+    <div class="cols">
+      <div class="col"><h3>Lento</h3><p>Para cada ticket, alguém consulta assinaturas, datas de compra e garantia antes de saber qual é a jornada.</p></div>
+      <div class="col"><h3>Inconsistente</h3><p>Casos parecidos podem ganhar classificações diferentes, dependendo de quem analisa.</p></div>
+      <div class="col ph"><h3>10 a 20 s</h3><p>por ticket, só para classificar, antes de começar a responder.</p></div>
+    </div>
+  </section>
+
+  <!-- 10. fecho -->
+  <section class="ov" id="ov3" aria-label="Fecho">
+    <h2 class="ov-h">A classificação deixa de depender de quem abre o ticket</h2>
+    <div class="ba">
+      <div class="ba-col before"><h3>Antes</h3>
+        <ol><li>Agente abre o ticket</li><li>Consulta assinaturas, datas e garantia</li><li>Decide a jornada</li><li>Aplica a macro na mão</li></ol>
+      </div>
+      <div class="ba-col after"><h3>Agora</h3>
+        <ol><li>Gatilho envia o ticket ao n8n</li><li>Lake responde por e-mail e, se preciso, por CPF</li><li>Tag gravada automaticamente</li><li>Macro aplicada uma única vez</li></ol>
+      </div>
+    </div>
+    <div class="metrics">
+      <div class="m"><strong>~5 s</strong><span>do ticket aberto até a tag, sem ninguém tocar, independente do volume</span></div>
+      <div class="m"><strong>124</strong><span>tickets reais usados para validar o fluxo na semana de teste</span></div>
+      <div class="m"><strong>Foco na resposta</strong><span>e não na classificação manual</span></div>
+    </div>
+  </section>
+
+  <div class="caption off" id="caption" aria-live="polite">
+    <p class="step-no" id="capNo"></p>
+    <h2 class="cap-title" id="capTitle"></h2>
+    <p class="cap-body" id="capBody"></p>
+  </div>
+
+  <svg class="flow" id="flow" viewBox="0 0 1920 820" preserveAspectRatio="xMidYMid meet" aria-label="Fluxograma da classificação">
+    <defs>
+      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="6" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" style="fill:var(--line)"/>
+      </marker>
+    </defs>
+    <g id="lZones"></g>
+    <g id="lEdges"></g>
+    <g id="lNodes"></g>
+    <g id="lTok"></g>
+  </svg>
+
+  <nav class="bar" aria-label="Navegação">
+    <div class="prog" id="prog"></div>
+    <div class="bar-name" id="barName"></div>
+    <div class="bar-hint off" id="barHint"><i></i><span id="barHintText"></span></div>
+    <div class="sim off" id="sim">
+      <span>Simular</span>
+      <button data-sim="1" style="--tc:var(--c-m1)"><kbd>1</kbd>M1</button>
+      <button data-sim="2" style="--tc:var(--c-djg)"><kbd>2</kbd>Garantia</button>
+      <button data-sim="3" style="--tc:var(--c-djf)"><kbd>3</kbd>Fora</button>
+      <button data-sim="4" style="--tc:var(--c-fin)"><kbd>4</kbd>Via CPF</button>
+      <button data-sim="5" style="--tc:var(--c-sem)"><kbd>5</kbd>Sem cadastro</button>
+    </div>
+    <div class="ctrl">
+      <button id="prev" aria-label="Etapa anterior"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button id="next" aria-label="Próxima etapa"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      <button id="theme">Tema</button>
+      <button id="fs">Tela cheia</button>
+    </div>
+  </nav>
+
+  <aside class="panel" id="panel" aria-hidden="true" aria-label="Regra da etapa">
+    <button class="p-close" id="pClose" aria-label="Fechar painel"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <p class="p-kind" id="pKind"></p>
+    <h2 class="p-title" id="pTitle"></h2>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script>
+(() => {
+const NS = 'http://www.w3.org/2000/svg';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPEED = RM ? 5 : 0.42;           // px por ms
+const TAG = {m1:'var(--c-m1)', djg:'var(--c-djg)', djf:'var(--c-djf)', fin:'var(--c-fin)', sem:'var(--c-sem)'};
+const EMBER = 'var(--ember)';
+const ABORT = Symbol('abort');
+let runId = 0, cur = 1, tokens = [], openId = null;
+const $ = id => document.getElementById(id);
+
+if (RM) { const d = $('heroDot'); d.querySelector('animateMotion').remove(); d.setAttribute('cx', 840); d.setAttribute('cy', 45); }
+
+/* ---------------- dados do fluxo ---------------- */
+const NODES = [
+  {id:'P1', x:300, y:150, w:200, h:84, label:'Limbo', sub:'gatilho paralelo', step:9},
+  {id:'P2', x:300, y:700, w:200, h:84, label:'Reversão', sub:'gatilho paralelo', step:9},
+  {id:'P3', x:300, y:560, w:200, h:84, label:'Transferência', sub:'gatilho paralelo', step:9},
+  {id:'A',  x:95,  y:410, w:150, h:84, label:'Ticket', sub:'cliente abre', step:4},
+  {id:'B',  x:300, y:410, w:160, h:84, label:'Gatilho', sub:'entrada', step:4},
+  {id:'C',  x:520, y:410, w:160, h:84, label:'n8n', sub:'webhook', step:4},
+  {id:'D',  x:730, y:410, w:200, h:84, label:'1ª verificação', sub:'e-mail no Lake', step:5},
+  {id:'M1', x:1060, y:170, w:290, h:56, label:'M1-QD', tag:'m1', step:5},
+  {id:'DJG',x:1060, y:290, w:290, h:56, label:'DJ-Garantia-QD', tag:'djg', step:5},
+  {id:'DJF',x:1060, y:410, w:290, h:56, label:'DJ-Fora-QD', tag:'djf', step:5},
+  {id:'FIN',x:1060, y:530, w:290, h:56, label:'assinaturas-finalizadas', tag:'fin', step:5},
+  {id:'SEM',x:1060, y:650, w:290, h:56, label:'email-sem-cadastro', tag:'sem', step:5},
+  {id:'E',  x:1350, y:650, w:200, h:84, label:'2ª verificação', sub:'CPF no Lake', step:6},
+  {id:'F',  x:1355, y:410, w:180, h:84, label:'Grava a tag', sub:'PUT no ticket', step:7},
+  {id:'G',  x:1575, y:410, w:150, h:84, label:'Gatilho', sub:'macro', step:8},
+  {id:'H',  x:1790, y:410, w:150, h:124, label:'Macro-', label2:'aplicada?', shape:'diamond', step:8},
+  {id:'I',  x:1790, y:205, w:200, h:84, label:'Aplica macro', sub:'+ Macro-aplicada', step:8},
+  {id:'J',  x:1790, y:615, w:200, h:84, label:'Não faz nada', sub:'sem loop', step:8},
+];
+const N = {}; NODES.forEach(n => N[n.id] = n);
+
+const EDGES = [
+  ['P1','C','r','t',9], ['P2','C','r','b',9], ['P3','C','r','b',9],
+  ['A','B','r','l',4], ['B','C','r','l',4], ['C','D','r','l',5],
+  ['D','M1','r','l',5], ['D','DJG','r','l',5], ['D','DJF','r','l',5], ['D','FIN','r','l',5], ['D','SEM','r','l',5],
+  ['FIN','E','r','l',6], ['SEM','E','r','l',6],
+  ['M1','F','r','l',7], ['DJG','F','r','l',7], ['DJF','F','r','l',7], ['E','F','t','b',7],
+  ['F','G','r','l',8], ['G','H','r','l',8],
+  ['H','I','t','b',8,'não tem',1808,302,'start'],
+  ['H','J','b','t',8,'já tem',1808,530,'start'],
+  ['I','G','l','t',8,'a tag nova dispara de novo',1548,300,'end'],
+].map(([f,t,fs,ts,step,label,lx,ly,anchor]) => ({id:f+'-'+t, f, t, fs, ts, step, label, lx, ly, anchor}));
+const E = {}; EDGES.forEach(e => E[e.id] = e);
+
+const ZONES = [
+  {x:10,   w:415,  label:'Zendesk: entrada'},
+  {x:432,  w:1023, label:'n8n + Lake: classificação'},
+  {x:1465, w:443,  label:'Zendesk: macro'},
+];
+
+/* ---------------- construção do SVG ---------------- */
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const DIR = {r:[1,0], l:[-1,0], t:[0,-1], b:[0,1]};
+function anchor(n, s) {
+  if (s === 'r') return [n.x + n.w/2, n.y];
+  if (s === 'l') return [n.x - n.w/2, n.y];
+  if (s === 't') return [n.x, n.y - n.h/2];
+  return [n.x, n.y + n.h/2];
+}
+function pathD(e) {
+  const a = anchor(N[e.f], e.fs), b = anchor(N[e.t], e.ts), d1 = DIR[e.fs], d2 = DIR[e.ts];
+  const dx = b[0]-a[0], dy = b[1]-a[1];
+  const same = (d1[0] !== 0) === (d2[0] !== 0);
+  const f = same ? .55 : .9;
+  const k1 = Math.max(24, Math.abs(d1[0] ? dx : dy) * f);
+  const k2 = Math.max(24, Math.abs(d2[0] ? dx : dy) * f);
+  return `M${a[0]},${a[1]} C${a[0]+d1[0]*k1},${a[1]+d1[1]*k1} ${b[0]+d2[0]*k2},${b[1]+d2[1]*k2} ${b[0]},${b[1]}`;
+}
+
+const lZones = $('lZones'), lEdges = $('lEdges'), lNodes = $('lNodes'), lTok = $('lTok');
+ZONES.forEach(z => {
+  const g = el('g', {class:'zone is-hidden'}, lZones);
+  el('rect', {x:z.x, y:36, width:z.w, height:748, rx:28}, g);
+  const t = el('text', {x:z.x + z.w/2, y:814}, g); t.textContent = z.label;
+  z.el = g;
+});
+
+EDGES.forEach(e => {
+  const g = el('g', {class:'edge is-hidden'}, lEdges);
+  const d = pathD(e);
+  e.base = el('path', {d, class:'base'}, g);
+  e.lit = el('path', {d, class:'lit'}, g);
+  e.L = e.lit.getTotalLength();
+  e.lit.style.strokeDasharray = e.L;
+  e.lit.style.strokeDashoffset = e.L;
+  if (e.label) {
+    const t = el('text', {x:e.lx, y:e.ly, class:'elabel', 'text-anchor':e.anchor || 'start'}, g);
+    t.textContent = e.label;
+  }
+  e.el = g;
+});
+
+NODES.forEach(n => {
+  const cls = 'node is-hidden' + (n.tag ? ' tag' : '');
+  const g = el('g', {class:cls, transform:`translate(${n.x},${n.y})`, tabindex:'0', role:'button',
+    'aria-label':`${n.label}${n.label2 ? ' ' + n.label2 : ''}: ver regra`}, lNodes);
+  if (n.tag) g.style.setProperty('--tc', TAG[n.tag]);
+  const shape = n.shape === 'diamond' ? `M0,${-n.h/2} L${n.w/2},0 L0,${n.h/2} L${-n.w/2},0 Z` : null;
+  const mk = cls => shape ? el('path', {d:shape, class:cls}, g)
+    : el('rect', {x:-n.w/2, y:-n.h/2, width:n.w, height:n.h, rx:n.tag ? 28 : 16, class:cls}, g);
+  mk('ring'); mk('box');
+  if (n.tag) {
+    el('circle', {cx:-n.w/2 + 26, cy:0, r:6, class:'dot'}, g);
+    const t = el('text', {x:-n.w/2 + 44, y:6, class:'label'}, g); t.textContent = n.label;
+  } else if (shape) {
+    const t1 = el('text', {x:0, y:-4, class:'label sm'}, g); t1.textContent = n.label;
+    const t2 = el('text', {x:0, y:20, class:'label sm'}, g); t2.textContent = n.label2;
+  } else {
+    const t = el('text', {x:0, y:-4, class:'label'}, g); t.textContent = n.label;
+    const s = el('text', {x:0, y:22, class:'sub'}, g); s.textContent = n.sub;
+  }
+  g.addEventListener('click', ev => { ev.stopPropagation(); openPanel(n.id); });
+  g.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); openPanel(n.id); } });
+  n.el = g;
+});
+
+/* ---------------- estados ---------------- */
+function setState(it, st) {
+  it.el.classList.remove('is-hidden', 'is-ghost', 'is-shown');
+  it.el.classList.add('is-' + st);
+  it.state = st;
+}
+function reveal(id) { const it = N[id] || E[id]; if (it) setState(it, 'shown'); }
+function setActive(id) { NODES.forEach(n => n.el.classList.toggle('is-active', n.id === id)); }
+function pulse(id) {
+  const n = N[id]; if (!n) return;
+  n.el.classList.remove('pulse'); void n.el.getBBox(); n.el.classList.add('pulse');
+}
+function resetLit() {
+  EDGES.forEach(e => {
+    e.lit.style.transition = 'none';
+    e.lit.style.strokeDashoffset = e.L;
+    e.lit.style.opacity = '';
+    e.el.classList.remove('done');
+  });
+}
+function flash(e, dur = 380) {
+  e.lit.style.transition = 'none';
+  e.lit.style.strokeDashoffset = e.L;
+  e.lit.style.opacity = 1;
+  void e.lit.getBoundingClientRect();
+  e.lit.style.transition = `stroke-dashoffset ${dur}ms ease-out, opacity 700ms ease ${dur + 150}ms`;
+  e.lit.style.strokeDashoffset = 0;
+  e.lit.style.opacity = 0;
+}
+
+/* ---------------- ticket animado ---------------- */
+function makeToken(below = false) {
+  const g = el('g', {class:'token'}, lTok);
+  el('circle', {r:22, class:'halo'}, g);
+  el('circle', {r:10, class:'core'}, g);
+  const chip = el('g', {}, g);
+  const inner = el('g', {class:'bumpg'}, chip);
+  const r = el('rect', {class:'chip-bg', rx:14, height:38, y:-19}, inner);
+  const t = el('text', {class:'chip-t', y:6}, inner);
+  const tok = {g, chip, inner, r, t, x:0, y:0, w:0, dy: below ? 48 : -48};
+  tokens.push(tok);
+  return tok;
+}
+function pos(tok, x, y) {
+  tok.x = x; tok.y = y;
+  tok.g.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+  let off = 0;
+  if (x + tok.w/2 > 1905) off = 1905 - (x + tok.w/2);
+  else if (x - tok.w/2 < 15) off = 15 - (x - tok.w/2);
+  tok.chip.setAttribute('transform', `translate(${off.toFixed(1)},${tok.dy})`);
+}
+function setChip(tok, text, color) {
+  tok.t.textContent = text;
+  tok.w = text.length * 10.3 + 36;
+  tok.r.setAttribute('width', tok.w);
+  tok.r.setAttribute('x', -tok.w/2);
+  tok.g.style.setProperty('--tc', color || EMBER);
+  tok.inner.classList.remove('bump'); void tok.inner.getBBox(); tok.inner.classList.add('bump');
+  pos(tok, tok.x, tok.y);
+}
+function clearTokens() { tokens.forEach(t => t.g.remove()); tokens = []; }
+
+const frame = () => new Promise(r => requestAnimationFrame(r));
+const ease = t => t < .5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+function alive(id) { if (id !== runId) throw ABORT; }
+async function wait(ms, id) { await new Promise(r => setTimeout(r, RM ? ms * .3 : ms)); alive(id); }
+async function glide(tok, x, y, dur, id) {
+  const x0 = tok.x, y0 = tok.y, t0 = performance.now();
+  for (;;) {
+    await frame(); alive(id);
+    const t = Math.min(1, (performance.now() - t0) / dur), k = ease(t);
+    pos(tok, x0 + (x - x0) * k, y0 + (y - y0) * k);
+    if (t >= 1) break;
+  }
+}
+async function move(tok, eid, id) {
+  const e = E[eid];
+  const s = e.lit.getPointAtLength(0);
+  const gap = Math.hypot(s.x - tok.x, s.y - tok.y);
+  if (gap > 2) await glide(tok, s.x, s.y, Math.min(420, gap / SPEED * .6 + 80), id);
+  const draw = !e.el.classList.contains('done');
+  if (draw) { e.lit.style.transition = 'none'; e.lit.style.opacity = 1; }
+  const dur = Math.max(RM ? 80 : 560, e.L / SPEED), t0 = performance.now();
+  for (;;) {
+    await frame(); alive(id);
+    const t = Math.min(1, (performance.now() - t0) / dur), k = ease(t);
+    const p = e.lit.getPointAtLength(k * e.L);
+    pos(tok, p.x, p.y);
+    if (draw) e.lit.style.strokeDashoffset = e.L * (1 - k);
+    if (t >= 1) break;
+  }
+  e.lit.style.strokeDashoffset = 0;
+  e.lit.style.opacity = '';
+  e.el.classList.add('done');
+  pulse(e.t);
+}
+async function run(fn) {
+  const id = ++runId;
+  try { await fn(id); } catch (err) { if (err !== ABORT) console.error(err); }
+}
+const at = (id, side) => anchor(N[id], side);
+
+/* ---------------- textos ---------------- */
+const tg = (k, t) => `<span class="t" style="--tc:${TAG[k]}">${t}</span>`;
+const code = t => `<span class="t">${t}</span>`;
+const ch = (id, k, t) => `<button class="chip" data-open="${id}" style="--tc:${TAG[k]}">${t}</button>`;
+
+const STEPS = [
+  {name:'Abertura', ov:'ov1', hint:'Use → ou o passador para avançar'},
+  {name:'O problema', ov:'ov2'},
+  {name:'O mapa', title:'O mapa do fluxo',
+    body:'Entra pelo Zendesk, é classificado no n8n com os dados do Lake e volta ao Zendesk com tag e macro aplicadas.'},
+  {name:'Entrada', title:'O ticket chega e o gatilho dispara',
+    body:'Assim que o ticket cai na caixa, um gatilho do Zendesk envia todas as informações dele para o n8n, via webhook.',
+    hint:'Clique em uma etapa do fluxo para ver a regra'},
+  {name:'1ª verificação', title:'1ª verificação: pelo e-mail',
+    body:'O n8n busca as assinaturas do cliente no Lake pelo e-mail e chega a uma de cinco classificações.',
+    hint:'Clique em uma tag para ver a regra'},
+  {name:'2ª verificação', title:'2ª verificação: pelo CPF',
+    body:`Se o e-mail deu ${tg('sem','email-sem-cadastro')} ou ${tg('fin','assinaturas-finalizadas')}, a mesma lógica roda pelo CPF e acha o cliente com outro cadastro. Sem resultado, fica ${tg('sem','email-sem-cadastro')}.`,
+    hint:'Clique em uma etapa do fluxo para ver a regra'},
+  {name:'Gravação da tag', title:'A classificação vira tag',
+    body:'No fim do fluxo, o n8n faz um PUT no ticket e grava a classificação como tag. Cada tag tem a sua view no Zendesk.',
+    hint:'Clique em uma etapa do fluxo para ver a regra'},
+  {name:'Macro sem loop', title:'Macro aplicada uma vez só',
+    body:`A tag dispara o gatilho de macro, que aplica a macro e marca ${code('Macro-aplicada')}. Quando o gatilho roda de novo, essa marca faz ele parar.`},
+  {name:'Gatilhos paralelos', title:'Três gatilhos paralelos, o mesmo motor',
+    body:'Limbo, Reversão via E-mail e ticket transferido de outro departamento rodam o mesmo processo. Se o ticket passar duas vezes, a tag final é a mesma.'},
+  {name:'Fecho', ov:'ov3'},
+];
+
+const PANELS = {
+  A:{kind:'Entrada', title:'Ticket aberto', html:
+    `<p class="lead">O cliente abre um ticket no Zendesk.</p>
+     <p>A partir da chegada na caixa, a classificação roda sozinha. Ninguém precisa consultar assinatura para decidir a jornada.</p>`},
+  B:{kind:'Gatilho do Zendesk', title:'Gatilho de entrada', html:
+    `<h3>Quando dispara</h3><p>Assim que o ticket chega na caixa.</p>
+     <h3>O que faz</h3><p>Envia todas as informações do ticket para o n8n, via webhook.</p>`},
+  C:{kind:'Orquestração', title:'n8n', html:
+    `<p class="lead">Recebe o ticket e conduz todo o resto: consulta ao Lake, classificação e gravação da tag.</p>
+     <h3>Portas de entrada</h3>
+     <ul><li>Gatilho principal de entrada</li><li>Gatilho paralelo Limbo | Queima Diária</li><li>Gatilho paralelo Reversão - via E-mail | Queima Diária</li><li>Gatilho paralelo de ticket transferido de outro departamento</li></ul>`},
+  D:{kind:'Consulta ao Lake', title:'1ª verificação: e-mail', html:
+    `<p class="lead">Busca as assinaturas do cliente pelo e-mail do ticket e classifica em uma de cinco tags.</p>
+     <h3>Resultados possíveis</h3>
+     <div class="chips">${ch('M1','m1','M1-QD')}${ch('DJG','djg','DJ-Garantia-QD')}${ch('DJF','djf','DJ-Fora-QD')}${ch('FIN','fin','assinaturas-finalizadas')}${ch('SEM','sem','email-sem-cadastro')}</div>
+     <h3>Para onde vai</h3>
+     <p>${tg('m1','M1-QD')}, ${tg('djg','DJ-Garantia-QD')} e ${tg('djf','DJ-Fora-QD')} seguem direto para a gravação da tag.</p>
+     <p>${tg('fin','assinaturas-finalizadas')} e ${tg('sem','email-sem-cadastro')} passam antes pela 2ª verificação, por CPF.</p>
+     <p class="tip">Clique em uma tag para ver a regra.</p>`},
+  M1:{kind:'Classificação', tag:'m1', title:'M1-QD', html:
+    `<p class="lead">Primeira compra recente, dentro do prazo de garantia.</p>
+     <h3>Regra</h3><pre class="rule">dentroGarantiaPosCompra &amp;&amp; !ehRenovacao</pre>
+     <h3>Na prática</h3><p>Primeira compra há menos de 7 ou 30 dias, conforme a data de corte de 01/09/2026, com a garantia ainda válida. M1 quer dizer primeiro mês do ciclo.</p>
+     <h3>Exemplo</h3><p>Cliente que comprou há 5 dias.</p>
+     <h3>Próximo passo</h3><p>Direto para a gravação da tag.</p>`},
+  DJG:{kind:'Classificação', tag:'djg', title:'DJ-Garantia-QD', html:
+    `<p class="lead">Dentro da garantia, mas não é a primeira compra.</p>
+     <h3>Três cenários</h3>
+     <div class="scn"><strong>Renovação recente com garantia válida</strong><code>renovacao_dentro_garantia_pos</code></div>
+     <div class="scn"><strong>Pagamento recente detectado pela transação, mesmo com Data Início antiga</strong><code>pagamento_recente_dentro_garantia</code></div>
+     <div class="scn"><strong>Janela pré-renovação: 7 ou 30 dias antes do fim do ciclo</strong><code>pre_renovacao</code></div>
+     <h3>Próximo passo</h3><p>Direto para a gravação da tag.</p>`},
+  DJF:{kind:'Classificação', tag:'djf', title:'DJ-Fora-QD', html:
+    `<p class="lead">Fora de todas as janelas de garantia.</p>
+     <h3>Regra</h3><p>É o <code>else</code> final da árvore: nenhuma condição de garantia se aplica.</p>
+     <h3>O que significa</h3><p>Não tem direito a estorno. É o público-alvo da Iara, o agente de retenção.</p>
+     <h3>Próximo passo</h3><p>Direto para a gravação da tag.</p>`},
+  FIN:{kind:'Classificação', tag:'fin', title:'assinaturas-finalizadas', html:
+    `<p class="lead">O cliente existe e tem assinaturas, mas todas foram descartadas pelos filtros.</p>
+     <h3>Filtros que descartam</h3>
+     <ul><li>Status <code>end</code> ou <code>refunded</code></li><li>Produto que contém "Up-Sell"</li><li>Garantia vazia ou vencida há mais de 12 meses</li></ul>
+     <h3>Próximo passo</h3><p>Segue para a 2ª verificação, por CPF.</p>`},
+  SEM:{kind:'Classificação', tag:'sem', title:'email-sem-cadastro', html:
+    `<p class="lead">O e-mail do ticket não levou a nenhuma assinatura.</p>
+     <h3>Dois submotivos</h3>
+     <div class="scn"><strong>O e-mail não bate com nenhum cadastro</strong><code>cliente_nao_encontrado</code></div>
+     <div class="scn"><strong>O cliente existe, mas nunca teve assinatura</strong><code>cliente_sem_assinaturas</code></div>
+     <h3>Próximo passo</h3><p>Segue para a 2ª verificação, por CPF. Se o CPF também não achar nada, esta vira a tag final.</p>`},
+  E:{kind:'Fallback no Lake', title:'2ª verificação: CPF', html:
+    `<h3>Quando roda</h3><p>Só quando a 1ª verificação terminou em ${tg('sem','email-sem-cadastro')} ou ${tg('fin','assinaturas-finalizadas')}. Nos outros três casos, o ticket vai direto para a tag.</p>
+     <h3>Como funciona</h3><p>Exatamente a mesma lógica de classificação, só que buscando pelo CPF.</p>
+     <h3>Por que existe</h3><p>Para achar o cliente que tem outra conta ou cadastro, não vinculado ao e-mail usado no ticket.</p>
+     <h3>Resultado</h3><p>Pode reclassificar para qualquer uma das cinco tags. Se o CPF também não achar nada, o ticket fica com ${tg('sem','email-sem-cadastro')} como tag final.</p>`},
+  F:{kind:'API do Zendesk', title:'Gravação da tag', html:
+    `<p class="lead">No fim do fluxo, o n8n faz um PUT no ticket e grava a classificação como tag.</p>
+     <h3>Por que tag</h3><p>Cada classificação tem uma view no Zendesk baseada na tag. O ticket aparece na fila certa e dispara o gatilho de macro.</p>`},
+  G:{kind:'Gatilho do Zendesk', title:'Gatilho de macro', html:
+    `<h3>Quando dispara</h3><p>Quando o ticket recebe a tag de classificação.</p>
+     <h3>Primeira checagem</h3><p>Verifica se o ticket já tem a tag <code>Macro-aplicada</code>.</p>`},
+  H:{kind:'Trava anti-loop', title:'Já tem Macro-aplicada?', html:
+    `<p class="lead">Os gatilhos do Zendesk são reavaliados a cada atualização do ticket. Aplicar a macro atualiza o ticket, então o gatilho roda de novo.</p>
+     <h3>Não tem</h3><p>Atualiza a árvore e a macro conforme a classificação e marca <code>Macro-aplicada</code>.</p>
+     <h3>Já tem</h3><p>Não faz nada. É isso que impede o loop infinito.</p>`},
+  I:{kind:'Ação', title:'Aplica a macro', html:
+    `<ul><li>Atualiza a árvore e a macro conforme a classificação</li><li>Adiciona a tag <code>Macro-aplicada</code></li></ul>`},
+  J:{kind:'Ação', title:'Não faz nada', html:
+    `<p class="lead">O ticket já passou pela macro.</p><p>O gatilho encerra aqui e o ciclo não se repete.</p>`},
+  P1:{kind:'Gatilho paralelo', title:'Limbo | Queima Diária', html:
+    `<p class="lead">Roda em paralelo ao fluxo principal e aplica o mesmo processo, com base nas regras da view Limbo | Queima Diária.</p>
+     <h3>Idempotente</h3><p>Se um ticket passar duas vezes pelo fluxo, ele converge para a mesma tag final.</p>`},
+  P3:{kind:'Gatilho paralelo', title:'Ticket transferido', html:
+    `<p class="lead">Dispara quando o ticket chega transferido de outro departamento e envia para o n8n, como os demais gatilhos.</p>
+     <h3>Idempotente</h3><p>Se um ticket passar duas vezes pelo fluxo, ele converge para a mesma tag final.</p>`},
+  P2:{kind:'Gatilho paralelo', title:'Reversão - via E-mail | Queima Diária', html:
+    `<p class="lead">Roda em paralelo ao fluxo principal e aplica o mesmo processo, com base nas regras da view Reversão - via E-mail | Queima Diária.</p>
+     <h3>Idempotente</h3><p>Se um ticket passar duas vezes pelo fluxo, ele converge para a mesma tag final.</p>`},
+};
+
+/* ---------------- roteiro de cada etapa ---------------- */
+const SPINE = ['A-B','B-C','C-D','D-DJF','DJF-F','F-G','G-H','H-I'];
+const PLAYS = {
+  3: async id => {
+    await wait(1300, id);
+    for (const eid of SPINE) { flash(E[eid], 340); await wait(190, id); }
+  },
+  4: async id => {
+    await wait(250, id); reveal('A'); pulse('A');
+    await wait(450, id);
+    const t = makeToken(); pos(t, ...at('A','r')); setChip(t, 'novo ticket');
+    await wait(700, id); reveal('B'); reveal('A-B');
+    await wait(300, id); await move(t, 'A-B', id); setChip(t, 'gatilho disparou');
+    await wait(550, id); reveal('C'); reveal('B-C');
+    await wait(300, id); await move(t, 'B-C', id); setChip(t, 'dados no n8n');
+    setActive('C');
+  },
+  5: async id => {
+    const t = makeToken(); pos(t, ...at('C','l')); setChip(t, 'dados no n8n');
+    await wait(300, id); reveal('D'); reveal('C-D');
+    await wait(300, id); await move(t, 'C-D', id); setChip(t, 'consultando e-mail no Lake');
+    await wait(700, id);
+    for (const k of ['M1','DJG','DJF','FIN','SEM']) {
+      reveal('D-' + k); reveal(k); flash(E['D-' + k], 360);
+      await wait(280, id);
+    }
+    await wait(900, id); setChip(t, 'email-sem-cadastro', TAG.sem);
+    await wait(500, id); await move(t, 'D-SEM', id);
+    setActive('SEM');
+  },
+  6: async id => {
+    const t = makeToken(); pos(t, ...at('SEM','l')); setChip(t, 'email-sem-cadastro', TAG.sem);
+    await wait(300, id); reveal('E'); reveal('SEM-E'); reveal('FIN-E');
+    await wait(400, id); await move(t, 'SEM-E', id); setChip(t, 'consultando CPF no Lake');
+    await wait(1100, id); pulse('E'); setChip(t, 'DJ-Garantia-QD (via CPF)', TAG.djg);
+    setActive('E');
+  },
+  7: async id => {
+    const t = makeToken(); pos(t, ...at('E','l')); setChip(t, 'DJ-Garantia-QD (via CPF)', TAG.djg);
+    await wait(300, id); reveal('F');
+    for (const eid of ['M1-F','DJG-F','DJF-F','E-F']) { reveal(eid); await wait(150, id); }
+    await wait(300, id); await move(t, 'E-F', id);
+    setChip(t, 'tag DJ-Garantia-QD gravada', TAG.djg);
+    setActive('F');
+  },
+  8: async id => {
+    const t = makeToken(); pos(t, ...at('F','b')); setChip(t, 'tag DJ-Garantia-QD', TAG.djg);
+    await wait(250, id);
+    for (const x of ['G','F-G','H','G-H','I','H-I','J','H-J','I-G']) { reveal(x); await wait(110, id); }
+    await wait(400, id); await move(t, 'F-G', id); setChip(t, 'gatilho de macro', TAG.djg);
+    await wait(350, id); await move(t, 'G-H', id); setChip(t, 'sem Macro-aplicada', TAG.djg);
+    await wait(600, id); await move(t, 'H-I', id); setChip(t, 'macro aplicada + Macro-aplicada');
+    await wait(1100, id); setChip(t, 'ticket mudou: gatilho de novo');
+    await wait(500, id); await move(t, 'I-G', id); await move(t, 'G-H', id);
+    setChip(t, 'já tem Macro-aplicada');
+    await wait(700, id); await move(t, 'H-J', id); setChip(t, 'para aqui, sem loop');
+    setActive('J');
+  },
+  9: async id => {
+    await wait(250, id); reveal('P1'); reveal('P1-C');
+    await wait(250, id); reveal('P3'); reveal('P3-C'); flash(E['P3-C'], 420);
+    const a = makeToken(false); pos(a, ...at('P1','r')); setChip(a, '1ª passada: Limbo');
+    const runA = async () => {
+      await wait(500, id);
+      await move(a, 'P1-C', id); await move(a, 'C-D', id);
+      setChip(a, 'DJ-Fora-QD', TAG.djf);
+      await move(a, 'D-DJF', id); await move(a, 'DJF-F', id);
+    };
+    const runB = async () => {
+      await wait(1700, id); reveal('P2'); reveal('P2-C');
+      const b = makeToken(true); pos(b, ...at('P2','r')); setChip(b, '2ª passada: Reversão');
+      await wait(600, id);
+      await move(b, 'P2-C', id); await move(b, 'C-D', id);
+      setChip(b, 'DJ-Fora-QD', TAG.djf);
+      await move(b, 'D-DJF', id); await move(b, 'DJF-F', id);
+    };
+    await Promise.all([runA(), runB()]);
+    pulse('F'); setActive('F');
+  },
+};
+
+/* ---------------- simulações (etapas 8 e 9) ---------------- */
+const C = (chip, c) => ({chip, c});
+const W = w => ({w});
+const HEAD = ['A-B','B-C','C-D', C('consultando e-mail'), W(600)];
+const tail = (tag, c) => ['F-G','G-H', C('sem Macro-aplicada', c), 'H-I', C(tag + ' + macro', c)];
+const SIMS = {
+  1: [...HEAD, C('M1-QD', TAG.m1), 'D-M1', 'M1-F', ...tail('M1-QD', TAG.m1)],
+  2: [...HEAD, C('DJ-Garantia-QD', TAG.djg), 'D-DJG', 'DJG-F', ...tail('DJ-Garantia-QD', TAG.djg)],
+  3: [...HEAD, C('DJ-Fora-QD', TAG.djf), 'D-DJF', 'DJF-F', ...tail('DJ-Fora-QD', TAG.djf)],
+  4: [...HEAD, C('email-sem-cadastro', TAG.sem), 'D-SEM', 'SEM-E', C('consultando CPF'), W(700),
+      C('M1-QD (via CPF)', TAG.m1), 'E-F', ...tail('M1-QD', TAG.m1)],
+  5: [...HEAD, C('email-sem-cadastro', TAG.sem), 'D-SEM', 'SEM-E', C('consultando CPF'), W(700),
+      C('CPF sem resultado', TAG.sem), W(500), C('email-sem-cadastro', TAG.sem), 'E-F', ...tail('email-sem-cadastro', TAG.sem)],
+};
+function simulate(k) {
+  if (cur < 8 || cur > 9 || !SIMS[k]) return;
+  document.querySelectorAll('#sim button').forEach(b => b.classList.toggle('on', b.dataset.sim === String(k)));
+  run(async id => {
+    clearTokens(); resetLit(); closePanel(); setActive(null);
+    NODES.concat(EDGES).forEach(it => { if (it.step <= cur) setState(it, 'shown'); });
+    const t = makeToken(); pos(t, ...at('A','r')); setChip(t, 'novo ticket');
+    await wait(350, id);
+    for (const s of SIMS[k]) {
+      if (typeof s === 'string') await move(t, s, id);
+      else if (s.chip) setChip(t, s.chip, s.c);
+      else if (s.w) await wait(s.w, id);
+    }
+    setActive('I');
+    document.querySelectorAll('#sim button').forEach(b => b.classList.remove('on'));
+  });
+}
+
+/* ---------------- painel ---------------- */
+const panel = $('panel');
+function openPanel(id) {
+  const p = PANELS[id]; if (!p) return;
+  panel.style.setProperty('--tc', p.tag ? TAG[p.tag] : EMBER);
+  $('pKind').textContent = p.kind;
+  $('pTitle').textContent = p.title;
+  $('pTitle').classList.toggle('mono', !!p.tag);
+  $('pBody').innerHTML = p.html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  panel.setAttribute('aria-hidden', 'false');
+  openId = id;
+  NODES.forEach(n => n.el.classList.toggle('is-selected', n.id === id));
+}
+function closePanel() {
+  panel.classList.remove('open');
+  panel.setAttribute('aria-hidden', 'true');
+  openId = null;
+  NODES.forEach(n => n.el.classList.remove('is-selected'));
+}
+$('pClose').addEventListener('click', ev => { ev.stopPropagation(); closePanel(); });
+panel.addEventListener('click', ev => {
+  ev.stopPropagation();
+  const b = ev.target.closest('[data-open]');
+  if (b) openPanel(b.dataset.open);
+});
+$('stage').addEventListener('click', () => { if (openId) closePanel(); });
+
+/* ---------------- navegação ---------------- */
+const prog = $('prog');
+STEPS.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.setAttribute('aria-label', `Etapa ${i + 1}: ${s.name}`);
+  b.addEventListener('click', ev => { ev.stopPropagation(); b.blur(); go(i + 1); });
+  prog.appendChild(b);
+});
+
+function setCaption(s, i) {
+  const cap = $('caption');
+  if (s.ov) { cap.classList.add('off'); return; }
+  cap.classList.add('swap');
+  setTimeout(() => {
+    $('capNo').textContent = String(i).padStart(2, '0') + ' / ' + STEPS.length;
+    $('capTitle').textContent = s.title;
+    $('capBody').innerHTML = s.body;
+    cap.classList.remove('swap', 'off');
+  }, cap.classList.contains('off') ? 0 : 200);
+}
+
+function renderStep(i) {
+  cur = i;
+  const s = STEPS[i - 1];
+  clearTokens(); resetLit(); closePanel(); setActive(null);
+  NODES.concat(EDGES).forEach(it => {
+    const st = i < 3 ? 'hidden' : it.step < i ? 'shown' : 'ghost';
+    if ((it.state === 'hidden' || !it.state) && st === 'ghost') {
+      const x = it.x != null ? it.x : N[it.f].x;
+      it.el.style.transitionDelay = Math.round(x / 1920 * 900) + 'ms';
+      setTimeout(() => { it.el.style.transitionDelay = ''; }, 1500);
+    }
+    setState(it, st);
+  });
+  ZONES.forEach(z => z.el.classList.toggle('is-hidden', i < 3));
+  $('stage').classList.toggle('closing', s.ov === 'ov3');
+  ['ov1','ov2','ov3'].forEach(o => $(o).classList.toggle('show', s.ov === o));
+  setCaption(s, i);
+
+  [...prog.children].forEach((b, k) => { b.classList.toggle('on', k === i - 1); b.classList.toggle('past', k < i - 1); });
+  $('barName').textContent = s.name;
+  const simOn = i === 8 || i === 9;
+  $('sim').classList.toggle('off', !simOn);
+  $('barHint').classList.toggle('off', !s.hint || simOn);
+  $('barHintText').textContent = s.hint || '';
+  document.querySelectorAll('#sim button').forEach(b => b.classList.remove('on'));
+
+  run(PLAYS[i] || (async () => {}));
+}
+function go(i) { renderStep(Math.max(1, Math.min(STEPS.length, i))); }
+
+$('next').addEventListener('click', ev => { ev.stopPropagation(); ev.currentTarget.blur(); go(cur + 1); });
+$('prev').addEventListener('click', ev => { ev.stopPropagation(); ev.currentTarget.blur(); go(cur - 1); });
+document.querySelectorAll('#sim button').forEach(b =>
+  b.addEventListener('click', ev => { ev.stopPropagation(); b.blur(); simulate(+b.dataset.sim); }));
+
+function effTheme() {
+  const d = document.documentElement.dataset.theme;
+  if (d) return d;
+  return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+function toggleTheme() { document.documentElement.dataset.theme = effTheme() === 'dark' ? 'light' : 'dark'; }
+function toggleFs() {
+  if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
+  else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {});
+}
+$('theme').addEventListener('click', ev => { ev.stopPropagation(); ev.currentTarget.blur(); toggleTheme(); });
+$('fs').addEventListener('click', ev => { ev.stopPropagation(); ev.currentTarget.blur(); toggleFs(); });
+
+document.addEventListener('keydown', ev => {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const k = ev.key;
+  if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') { ev.preventDefault(); go(cur + 1); }
+  else if (k === 'ArrowLeft' || k === 'PageUp') { ev.preventDefault(); go(cur - 1); }
+  else if (k === 'Home') { ev.preventDefault(); go(1); }
+  else if (k === 'End') { ev.preventDefault(); go(STEPS.length); }
+  else if (k === 'Escape') { if (openId) closePanel(); }
+  else if (k === 'r' || k === 'R') renderStep(cur);
+  else if (k === 'f' || k === 'F') toggleFs();
+  else if (k === 't' || k === 'T') toggleTheme();
+  else if (/^[1-5]$/.test(k)) simulate(+k);
+});
+
+/* ---------------- escala para 16:9 ---------------- */
+const stage = $('stage');
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stage.style.transform = `translate(-50%,-50%) scale(${s})`;
+}
+addEventListener('resize', fit);
+fit();
+renderStep(1);
+})();
+</script>
+</body>
+</html>
